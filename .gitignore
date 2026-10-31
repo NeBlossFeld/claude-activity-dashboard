@@ -1,0 +1,12 @@
+# Written by Claude Code each time it loads the plugin from a working folder
+.claude-plugin/types/
+
+# Reports, if someone points the report folder here
+claude-activity-*.html
+
+# OS and editor leftovers
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
