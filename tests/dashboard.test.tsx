@@ -570,7 +570,75 @@ test('two agents of the same type are told apart by number', async ($, on) => {
   await ui.unmount()
 })
 
-test('the report goes under the home folder when no report folder is set', async ($, on) => {
+// Spawns one agent per type, in order (ids ag1, ag2, ...); the stand-in must be on before the first `$` call.
+const spawnAgents = async ($: Parameters<Parameters<typeof test>[1]>[0], on: Parameters<Parameters<typeof test>[1]>[1], types: string[]) => {
+  engine(on)
+  let n = 0
+  on('agent.spawn', () => ({ model: 'claude-haiku-4', agentId: `ag${++n}` }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: 'ok' }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  for (const t of types) await $.agent.spawn({ prompt: t, description: `Do ${t}`, subagentType: t })
+}
+
+const finish = async ($: Parameters<Parameters<typeof test>[1]>[0], agentId: string) => {
+  await $.turn.complete({ turnId: `t-${agentId}`, agentId, answer: 'ok', durationMs: 10, isAborted: false, reason: 'answer' } as never)
+}
+
+test('a finished agent window has a close button, a running one does not', async ($, on) => {
+  await spawnAgents($, on, ['Explore', 'Plan'])
+  await finish($, 'ag1')
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Button', key: 'close-ag1' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'close-ag2' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('closing a finished agent hides its window, keeps its timeline row, and show closed restores it', async ($, on) => {
+  await spawnAgents($, on, ['Explore'])
+  await $.tool.call({ tool: 'Grep', pattern: 'spawn', agentId: 'ag1' })
+  await finish($, 'ag1')
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /🤖.*Explore/ })).toBeDefined()
+  await ui.press({ key: 'close-ag1' })
+  expect(await ui.find({ type: 'Text', text: /🤖.*Explore/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /Search "spawn"/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'agents-restore' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'agents-restore', text: /show 1 closed/ })).toBeDefined()
+  await ui.press({ key: 'agents-restore' })
+  expect(await ui.find({ type: 'Text', text: /🤖.*Explore/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'agents-restore' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('clear finished closes every finished window and leaves the running one', async ($, on) => {
+  await spawnAgents($, on, ['Explore', 'Plan', 'Write'])
+  await finish($, 'ag1')
+  await finish($, 'ag2')
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Button', key: 'agents-clear', text: /Clear finished \(2\)/ })).toBeDefined()
+  await ui.press({ key: 'agents-clear' })
+  expect(await ui.find({ type: 'Text', text: /🤖.*Explore/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /🤖.*Plan/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /🤖.*Write/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'agents-clear' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'agents-restore', text: /show 2 closed/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a closed agent that starts a new turn shows again', async ($, on) => {
+  await spawnAgents($, on, ['Explore'])
+  await finish($, 'ag1')
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'close-ag1' })
+  expect(await ui.find({ type: 'Text', text: /🤖.*Explore/ })).toBeUndefined()
+  await $.turn.start({ turnId: 't2', agentId: 'ag1' } as never)
+  await ui.advance(100)
+  expect(await ui.find({ type: 'Text', text: /🤖.*Explore/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the report goes under the home folder when no report folder is set',async ($, on) => {
   engine(on, { HOME: '/home/me' })
   const written: string[] = []
   on('fs.write', (_, e) => (written.push(e.path), { value: undefined }))

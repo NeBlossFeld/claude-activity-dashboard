@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Finished subagent windows can be closed: **✕** on each window, or **✕ Clear finished** above the tree for all of them. **show N closed** brings them back. Running agents can't be closed, and closing never removes an agent's actions from the timeline.
+- Token counts of a million or more read as `29.3M`.
+
 ## 0.2.0
 
 First public release.

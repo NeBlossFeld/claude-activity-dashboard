@@ -85,6 +85,9 @@ export type View = {
   // The ⚙ panel, and what it last said (a refused change), if anything.
   isSettingsOpen: boolean
   settingsNote: string | null
+  // Finished agents whose windows the person closed. Their actions stay in the timeline; an agent
+  // that runs again (resumed) shows again.
+  closedAgents: string[]
 }
 
 // The plugin's settings (plugin.json `userConfig`), as register() receives them.

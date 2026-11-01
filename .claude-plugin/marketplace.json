@@ -7,7 +7,7 @@
       "name": "activity-dashboard",
       "source": "./",
       "description": "Live pane showing what Claude is doing: tools, files, edits, browser clicks and subagent windows",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "category": "productivity",
       "tags": ["dashboard", "activity", "subagents", "timeline", "observability"]
     }

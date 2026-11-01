@@ -525,6 +525,15 @@ export const registerPane = (on: On) => {
                 label={isBig ? 'Less' : 'More'}
                 onPress={() => setView(x => ({ ...x, expanded: x.expanded === ag.id ? null : ag.id }))}
               />
+              {ag.status !== 'running' && (
+                <Button
+                  key={`close-${ag.id}`}
+                  plain
+                  dimColor
+                  label="✕"
+                  onPress={() => setView(x => ({ ...x, closedAgents: [...x.closedAgents.filter(id => id !== ag.id), ag.id] }))}
+                />
+              )}
             </Box>
             <Text wrap="truncate-end">
               ▶ {ag.current} <Text dimColor>· {ag.tools} tools · {kilo(ag.tokens)} tok</Text>
@@ -549,7 +558,11 @@ export const registerPane = (on: On) => {
 
     // The agent tree: the main loop at the root, each subagent under the agent that started it,
     // newest first. Running agents always make the cut of 8, so none that counts as running hides.
-    const byNewest = [...d.agents].sort((p, q) => q.startedAt - p.startedAt)
+    // Closed windows are left out; a running agent always shows, even one closed before it ran again.
+    const isClosed = (a: Agent) => a.status !== 'running' && v.closedAgents.includes(a.id)
+    const closedCount = d.agents.filter(isClosed).length
+    const finishedOpen = d.agents.filter(a => a.status !== 'running' && !isClosed(a))
+    const byNewest = [...d.agents].filter(a => !isClosed(a)).sort((p, q) => q.startedAt - p.startedAt)
     const recent = [...byNewest.filter(a => a.status === 'running'), ...byNewest.filter(a => a.status !== 'running')].slice(0, 8)
     const ids = new Set(recent.map(a => a.id))
     const childrenOf = (parent?: string) =>
@@ -584,9 +597,22 @@ export const registerPane = (on: On) => {
     )
     const agentTree = (
       <Box flexDirection="column">
-        <Text>
-          ◆ <Text weight="semibold">Main</Text> {badge(d.status.model)}
-        </Text>
+        <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Text>
+            ◆ <Text weight="semibold">Main</Text> {badge(d.status.model)}
+          </Text>
+          {finishedOpen.length > 0 && (
+            <Button
+              key="agents-clear"
+              dimColor
+              label={`✕ Clear finished (${finishedOpen.length})`}
+              onPress={() => setView(x => ({ ...x, closedAgents: [...new Set([...x.closedAgents, ...finishedOpen.map(a => a.id)])] }))}
+            />
+          )}
+          {closedCount > 0 && (
+            <Button key="agents-restore" plain dimColor label={`show ${closedCount} closed`} onPress={() => setView(x => ({ ...x, closedAgents: [] }))} />
+          )}
+        </Box>
         {treeRows(undefined, '')}
       </Box>
     )

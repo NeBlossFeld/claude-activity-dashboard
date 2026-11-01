@@ -28,6 +28,7 @@ export const FRESH_VIEW: View = {
   issuesSeen: 0,
   isSettingsOpen: false,
   settingsNote: null,
+  closedAgents: [],
 }
 export const SIZE_LIMITS = { live: [4, 30], timeline: [5, 80] } as const
 export const ALL_SECTIONS: Section[] = ['live', 'agents', 'timeline', 'files', 'browser']
@@ -37,6 +38,7 @@ export const norm = (v: View): View => ({
   ...v,
   sizes: { ...FRESH_VIEW.sizes, ...(v.sizes ?? {}) },
   collapsed: (v.collapsed ?? []).filter(s => ALL_SECTIONS.includes(s)),
+  closedAgents: v.closedAgents ?? [],
 })
 export const HISTORY = 'history'
 export const LAYOUT = 'layout'
