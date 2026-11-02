@@ -313,18 +313,22 @@ export const register: Register = (on, options) => {
       setLive(loop, { ...IDLE_LIVE, id, mode: 'idle', text: `${ICON[kind]} ${info.summary}`, isDone: false, tool })
     }
 
+    // The call starts now: its run time counts from here.
+    const callStart = Date.now()
+    if (mode) setLive(loop, l => (l.id === id ? { ...l, startedAt: callStart } : l))
     const ran = await next(e)
     const failed = ran.deny !== undefined || ran.isError === true
     // A read's text is what came back: the typer skims it at speed.
     const readText = mode === 'read' && !failed ? (ran.text ?? '').slice(0, LIVE_READ) : undefined
     const output = mode ? outputOf(mode, ran.deny ?? ran.text ?? '') : ''
+    const callEnd = Date.now()
     if (mode)
       setLive(loop, l =>
         l.id !== id
           ? l
           : readText === undefined
-            ? { ...l, isDone: true, output, isError: failed }
-            : { ...l, text: readText, offset: 0, isDone: true },
+            ? { ...l, isDone: true, output, isError: failed, startedAt: l.startedAt ?? callStart, endedAt: callEnd }
+            : { ...l, text: readText, offset: 0, isDone: true, endedAt: callEnd },
       )
     const extra = afterLines(tool, ran.text ?? '', failed, ran.deny)
     await update($, dash, d => ({

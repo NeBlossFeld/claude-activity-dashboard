@@ -14,6 +14,8 @@ type State = {
   since: number
   doneAt: number
   shownOut: number
+  // The tick the current props arrived on: a command's `ageMs` counts on from it.
+  propsTick: number
 }
 
 const START = (props: TyperProps): State => ({
@@ -25,6 +27,7 @@ const START = (props: TyperProps): State => ({
   since: 0,
   doneAt: -1,
   shownOut: 0,
+  propsTick: 0,
 })
 
 const TICK = 40
@@ -70,6 +73,9 @@ const base = (p: string): string => p.split(/[\\/]/).pop() || p
 
 const isStill = (p: TyperProps): boolean => (p as { still?: boolean }).still === true
 
+// The wall clock, where the drawing environment has one.
+const wallNow = (): number => (typeof Date !== 'undefined' ? Date.now() : 0)
+
 const step = (st: State): State => {
   const p = st.ref.props
   const fresh = st.id !== p.id
@@ -114,7 +120,7 @@ const step = (st: State): State => {
     else if ((p.mode === 'search' || p.mode === 'web') && p.isDone) shownOut = p.mode === 'web' ? webCount(p) : outLines(p.output).length
   }
 
-  return { ref: st.ref, id: p.id, oldLeft, typed, ticks, since, doneAt, shownOut }
+  return { ref: st.ref, id: p.id, oldLeft, typed, ticks, since, doneAt, shownOut, propsTick: st.propsTick }
 }
 
 const outLines = (s: string): string[] => s.split(/\r?\n/).filter(l => l.trim() !== '')
@@ -135,7 +141,16 @@ const terminal = (props: TyperProps, surface: Parameters<ClientModule<TyperProps
   const total = props.text.length
   const isTyping = local < total || (!props.isDone && total === 0)
   const ticks = st.ticks
-  const ran = ((props.isDone && st.doneAt >= 0 ? st.doneAt : ticks) - (isFresh ? ticks : st.since)) * TICK
+  // The real run time: from the hooks' own clock when they sent one, plus the real time since they
+  // sent it (the wall clock, not this window's ticks, which restart when the app is minimized and
+  // pause while it is hidden); else from when this window first saw the command.
+  const sinceSent = props.sentAt !== undefined ? Math.max(0, wallNow() - props.sentAt) : Math.max(0, ticks - st.propsTick) * TICK
+  const ran =
+    props.ageMs !== undefined
+      ? props.isDone
+        ? props.ageMs
+        : props.ageMs + sinceSent
+      : ((props.isDone && st.doneAt >= 0 ? st.doneAt : ticks) - (isFresh ? ticks : st.since)) * TICK
   const command = props.text.slice(0, local).replace(/\s+/g, ' ')
   const cursor = isStill(props) ? (props.isDone ? '' : '▌') : Math.floor((ticks * TICK) / 500) % 2 === 0 ? '▌' : ' '
   const wave = Array.from({ length: 14 }, (_, i) => WAVE[(i + ticks) % WAVE.length]).join('')
@@ -156,9 +171,11 @@ const terminal = (props: TyperProps, surface: Parameters<ClientModule<TyperProps
         {isTyping && <Text color="claude">{cursor}</Text>}
       </Text>
       {!isTyping && !props.isDone && (
-        <Text mono>
+        // The words first and one line that cuts rather than wraps: a wide wave frame can only lose
+        // its own tail, never push "running · time" onto a hidden second line.
+        <Text mono wrap="truncate-end">
+          <Text dimColor>running · {clock(ran)} </Text>
           <Text color="bashBorder">{wave}</Text>
-          <Text dimColor> running · {clock(ran)}</Text>
         </Text>
       )}
       {props.isDone &&
@@ -242,9 +259,9 @@ const searching = (props: TyperProps, surface: Parameters<ClientModule<TyperProp
         {head}
       </Text>
       {!props.isDone && (
-        <Text mono>
+        <Text mono wrap="truncate-end">
+          <Text dimColor>scanning… </Text>
           <Text color="claude">[{beam}]</Text>
-          <Text dimColor> scanning…</Text>
         </Text>
       )}
       {props.isDone &&
@@ -335,14 +352,14 @@ const browsing = (props: TyperProps, surface: Parameters<ClientModule<TyperProps
   const rows = Math.max(3, props.rows)
   const cols = Math.max(20, surface.columns || 60)
   const kind = webKind(props)
-  const dots = '.'.repeat(1 + (Math.floor((st.ticks * TICK) / 350) % 3))
+  const dots = '.'.repeat(1 + (Math.floor((st.ticks * TICK) / 350) % 3)).padEnd(3)
   const bar = sweep(st.ticks, 24, '===')
   const room = Math.max(1, rows - 2)
   const count = isFresh ? 0 : st.shownOut
   const loading = !props.isDone && (
-    <Text mono>
+    <Text mono wrap="truncate-end">
+      <Text dimColor>loading{dots} </Text>
       <Text color="claude">[{bar}]</Text>
-      <Text dimColor> loading{dots}</Text>
     </Text>
   )
   const failed = props.isDone && props.isError && (
@@ -500,6 +517,7 @@ const Typer: ClientModule<TyperProps, State> = (props, surface) => {
     surface.every(POLL, () => surface.post({ ver: (surface.state?.ref.props ?? props).ver }))
   }
   const real: State = surface.state ?? START(props)
+  if (real.ref.props !== props) real.propsTick = real.ticks
   real.ref.props = props
   const still = isStill(props)
   // Still: a frozen clock, so no wave, beam or dots ever move.

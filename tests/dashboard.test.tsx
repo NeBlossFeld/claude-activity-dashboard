@@ -19,6 +19,13 @@ let lastToolId = ''
 // How many times the plugin asked to open its pane, and the last status line it set.
 let opens = 0
 let lastStatus = ''
+// Opt-in: set to a promise and the tool.call stand-in waits for it, so a test can catch a call mid-run.
+let gate: Promise<void> | undefined
+const deferred = () => {
+  let release = () => {}
+  gate = new Promise<void>(r => (release = r))
+  return release
+}
 
 const engine = (on: Parameters<Parameters<typeof test>[1]>[1], env: Record<string, string> = { USERPROFILE: 'C:\\Users\\me' }) => {
   mock.clock(on, { now: 1_700_000_000_000 })
@@ -30,7 +37,8 @@ const engine = (on: Parameters<Parameters<typeof test>[1]>[1], env: Record<strin
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('ui.open', () => (opens++, { value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('tool.call', (_, e) => ({
+  gate = undefined
+  on('tool.call', async (_, e) => (await gate, {
     ...((lastToolId = e.tool_use_id ?? ''), {}),
     result: {},
     text:
@@ -777,4 +785,95 @@ test('a refused setting shows Not saved and leaves the switch as it was', async 
   expect(await ui.find({ type: 'Button', key: 'set-animations', text: /◉ On/ })).toBeDefined()
   expect(await ui.find({ type: 'Button', key: 'set-animations', text: /○ Off/ })).toBeUndefined()
   await ui.unmount()
+})
+
+test('a running command shows the words first, then the timer, in one truncating line', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const release = deferred()
+  const call = $.tool.call({ tool: 'Bash', command: 'sleep' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.advance(100)
+  await ui.advance(100)
+  await ui.advance(100)
+  const line = await ui.find({ type: 'Text', text: /^running · \d+s/, in: 'typer' })
+  expect(line).toBeDefined()
+  expect((line as unknown as { props?: { wrap?: string } }).props?.wrap ?? 'truncate-end').toBe('truncate-end')
+  release()
+  await call
+  await ui.unmount()
+})
+
+test('the run timer counts from when the call started, not from when the pane mounted', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const release = deferred()
+  const call = $.tool.call({ tool: 'Bash', command: 'sleep' })
+  // Time passes before anyone looks at the typer.
+  await new Promise(r => setTimeout(r, 1300))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.advance(100)
+  const line = await ui.find({ type: 'Text', text: /^running · \d+s/, in: 'typer' })
+  expect(line).toBeDefined()
+  const shown = Number(/^running · (\d+)s/.exec((line as unknown as { text: string }).text)?.[1])
+  expect(shown).toBeGreaterThanOrEqual(1)
+  release()
+  await call
+  await ui.unmount()
+})
+
+test('a web search mid-load shows loading dots then the bar', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const release = deferred()
+  const call = $.tool.call({ tool: 'WebSearch', query: 'lua tables' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.advance(300)
+  expect(await ui.find({ type: 'Text', text: /^loading\.{1,3}\s*\[/, in: 'typer' })).toBeDefined()
+  release()
+  await call
+  await ui.unmount()
+})
+
+test('a grep mid-run shows scanning then the beam', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const release = deferred()
+  const call = $.tool.call({ tool: 'Grep', pattern: 'hit', path: '/p' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.advance(300)
+  expect(await ui.find({ type: 'Text', text: /^scanning… \[/, in: 'typer' })).toBeDefined()
+  release()
+  await call
+  await ui.unmount()
+})
+
+test('remounting the pane mid-run does not wind the run timer or the pulse time back', async ($, on) => {
+  engine(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.turn.start({ turnId: 't1' } as never)
+  const release = deferred()
+  const call = $.tool.call({ tool: 'Bash', command: 'sleep' })
+  const secs = async (ui: Awaited<ReturnType<typeof $.ui.mount>>, id: string, re: RegExp) => {
+    const t = await ui.find({ type: 'Text', text: re, in: id })
+    expect(t).toBeDefined()
+    return Number(re.exec((t as unknown as { text: string }).text)?.[1])
+  }
+  const first = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await first.advance(100)
+  await new Promise(r => setTimeout(r, 1300))
+  await first.advance(100)
+  const run1 = await secs(first, 'typer', /^running · (\d+)s/)
+  const pulse1 = await secs(first, 'pulse-main', /· (\d+)s/)
+  expect(run1).toBeGreaterThanOrEqual(1)
+  await first.unmount()
+  // A rebuilt client starts its tick counts from zero.
+  const second = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await second.advance(100)
+  expect(await secs(second, 'typer', /^running · (\d+)s/)).toBeGreaterThanOrEqual(run1)
+  expect(await secs(second, 'pulse-main', /· (\d+)s/)).toBeGreaterThanOrEqual(pulse1)
+  release()
+  await call
+  await second.unmount()
 })

@@ -116,6 +116,9 @@ export type Live = {
   // What came back once it ran (its tail): a command's output, a search's hits, a page's or a search's results.
   output: string
   isError: boolean
+  // When the call itself started and ended (ms since the epoch), so a command shows its real run time.
+  startedAt?: number
+  endedAt?: number
 }
 
 // A session kept in $.store for the HTML report's history.
@@ -129,11 +132,16 @@ export type PastSession = {
 }
 
 // Props of the client modules (plain JSON).
-export type TyperProps = Live & { rows: number; ver: number; still?: boolean }
+// `ageMs`: how long the call had run when these props were made (its whole run once it ended);
+// `sentAt`: when they were made (Date.now()), so the client adds the real time since, not its ticks.
+export type TyperProps = Live & { rows: number; ver: number; still?: boolean; ageMs?: number; sentAt?: number }
 export type PulseProps = {
   state: 'idle' | 'thinking' | 'tool' | 'running' | 'done' | 'failed' | 'stopped'
   label: string
   elapsedMs: number
+  // When elapsedMs was measured (Date.now()): the clock adds the real time since, so a spinner
+  // rebuilt after the app was minimized, or one whose timers were paused, still shows the right time.
+  sentAt?: number
   // Animations off: no spinner, no ticking.
   still?: boolean
 }

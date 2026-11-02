@@ -65,6 +65,7 @@ export const registerPane = (on: On) => {
       label: d.status.state === 'idle' ? (waitingOn ? `waiting on ${waitingOn} agent${waitingOn > 1 ? 's' : ''}` : '') : cut(d.status.label, 60),
       // Idle has no running clock.
       elapsedMs: d.status.state !== 'idle' && d.status.turnStartedAt ? now - d.status.turnStartedAt : 0,
+      sentAt: Date.now(),
       ...still,
     }
     const cols = e.props.bodyColumns ?? 80
@@ -494,7 +495,7 @@ export const registerPane = (on: On) => {
               <Client
                 key={`pulse-${ag.id}`}
                 module="./pulse.tsx"
-                props={{ state: ag.status, label: '', elapsedMs: (ag.endedAt ?? now) - ag.startedAt, ...still } satisfies PulseProps}
+                props={{ state: ag.status, label: '', elapsedMs: (ag.endedAt ?? now) - ag.startedAt, sentAt: Date.now(), ...still } satisfies PulseProps}
               />
             ) : (
               <Text color={tone}>

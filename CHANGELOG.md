@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Fixed: "running · time" no longer blinks in and out while the wave animates. The words come first and the line cuts off instead of wrapping; the same for the search beam and the web loading bar.
+- Fixed: a command's timer shows its real run time, from when the command started, not from when its window appeared.
+- Fixed: timers no longer restart when the app is minimized and restored; spinners and the mini terminal count by the wall clock.
+
 ## 0.2.1
 
 - Finished subagent windows can be closed: **✕** on each window, or **✕ Clear finished** above the tree for all of them. **show N closed** brings them back. Running agents can't be closed, and closing never removes an agent's actions from the timeline.

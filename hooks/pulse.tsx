@@ -45,8 +45,12 @@ const Pulse: ClientModule<PulseProps, State> = (props, surface) => {
     })
   }
   const st = surface.state ?? { base: props.elapsedMs, ms: 0, frame: 0, isActive: active }
-  // New props carry a fresh elapsed time: count on from it.
-  const elapsed = st.base === props.elapsedMs ? props.elapsedMs + st.ms : props.elapsedMs
+  // New props carry a fresh elapsed time: count on from it by the wall clock when they say when they
+  // were measured (a spinner rebuilt after the app was minimized, or whose timers were paused while
+  // it was hidden, still shows the right time), else by this spinner's own ticks.
+  const hasClock = props.sentAt !== undefined && typeof Date !== 'undefined'
+  const sinceSent = hasClock ? Math.max(0, Date.now() - (props.sentAt ?? 0)) : st.base === props.elapsedMs ? st.ms : 0
+  const elapsed = props.elapsedMs + sinceSent
   const rebase = st.base !== props.elapsedMs
   if (rebase || st.isActive !== active) {
     surface.setState({ ...st, base: props.elapsedMs, ms: rebase ? 0 : st.ms, isActive: active })

@@ -81,12 +81,17 @@ export const setLive = (loop: string, next: Live | ((l: Live) => Live)) => {
     if (key !== MAIN) lives.delete(key)
   }
 }
-export const typerProps = (v: View, loop = MAIN) => ({
-  ...liveOfLoop(loop),
-  rows: loop !== MAIN ? AGENT_ROWS : v.isCompact ? Math.min(5, v.sizes.live) : v.sizes.live,
-  ver: lives.get(loop)?.ver ?? 0,
-  ...(opts.animations ? {} : { still: true }),
-})
+export const typerProps = (v: View, loop = MAIN) => {
+  const live = liveOfLoop(loop)
+  return {
+    ...live,
+    rows: loop !== MAIN ? AGENT_ROWS : v.isCompact ? Math.min(5, v.sizes.live) : v.sizes.live,
+    ver: lives.get(loop)?.ver ?? 0,
+    ...(opts.animations ? {} : { still: true }),
+    // The real run time so far, from the call's own start: not from when this window first drew it.
+    ...(live.startedAt ? { ageMs: Math.max(0, (live.endedAt ?? Date.now()) - live.startedAt), sentAt: Date.now() } : {}),
+  }
+}
 // A typer Client's key names its loop: `typer` for the main loop, `typer-<agent id>` for a subagent.
 export const typerKey = (loop: string) => (loop === MAIN ? 'typer' : `typer-${loop}`)
 export const loopOfKey = (key: string) => (key === 'typer' ? MAIN : key.slice('typer-'.length))
